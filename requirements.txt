@@ -1,5 +1,6 @@
-st-gsheets-connection
+streamlit
 pandas
+streamlit-gsheets
 gspread
 google-auth
-gspread-dataframe
+openpyxl
