@@ -11,6 +11,9 @@ st.set_page_config(
     layout="wide"
 )
 
+# Tautan langsung Google Sheets Anda (Anti-Error 404/400)
+URL_SPREADSHEET = "https://docs.google.com/spreadsheets/d/1zsFeCk7jtd4fVOgqlSqgSgvtNVOLq4iqRKdpqTiMhsk"
+
 # Custom CSS untuk mempercantik komponen visual & tata letak (Layout)
 st.markdown("""
     <style>
@@ -60,15 +63,14 @@ st.markdown('<div class="main-title">📊 Web Monitoring & Update Anomali</div>'
 st.markdown('<div class="sub-title">Badan Pusat Statistik Kabupaten Pesawaran</div>', unsafe_allow_html=True)
 
 # ==============================================================================
-# 4. KONEKSI GOOGLE SHEETS LIVE CLOUD (SUDAH DIMODIFIKASI AGAR PERMANEN)
+# 4. KONEKSI GOOGLE SHEETS LIVE CLOUD
 # ==============================================================================
-# Membuat koneksi dua arah langsung ke Google Sheets pusat
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_data_from_sheets():
     try:
-        # Membaca sheet bernama 'Sheet1' tanpa cache (selalu real-time)
-        df = conn.read(worksheet="Sheet1", ttl=0)
+        # Membaca data langsung menggunakan URL pangkalan data utama
+        df = conn.read(spreadsheet=URL_SPREADSHEET, worksheet="Sheet1", ttl=0)
         df.columns = df.columns.str.strip()
         
         # Penyeragaman data ID/Kode agar tidak berubah format (.0)
@@ -82,7 +84,7 @@ def load_data_from_sheets():
             
         return df
     except Exception as e:
-        st.error(f"⚠️ Gagal memuat data dari Google Sheets! Pastikan isian Secrets di Streamlit Cloud sudah benar. Detail error: {e}")
+        st.error(f"⚠️ Gagal memuat data dari Google Sheets! Detail error: {e}")
         return None
 
 # Membaca data secara live di setiap aktivitas web
@@ -151,6 +153,10 @@ df_belum_filtered = jalankan_filter(df_belum)
 if not df_belum_filtered.empty:
     df_belum_filtered.insert(0, 'Cek & Tandai', False)
     
+    # Menyesuaikan daftar kolom disabled agar COCOK PERSIS dengan header Google Sheets Anda
+    kolom_ada = df_belum_filtered.columns.tolist()
+    kolom_disabled = [c for c in ['No', 'Kecamatan', 'Desa', 'SLS', 'Keluarga atau Usaha', 'Anomali', 'Petugas', 'Pengawas'] if c in kolom_ada]
+    
     edited_df = st.data_editor(
         df_belum_filtered,
         column_config={
@@ -161,7 +167,7 @@ if not df_belum_filtered.empty:
             ),
             "Status": None  # Sembunyikan kolom status asli
         },
-        disabled=['No', 'Kecamatan', 'Desa', 'SLS', 'Nama Keluarga atau Usaha', 'Jenis Anomali', 'Nama Petugas', 'Nama Pengawas'],
+        disabled=kolom_disabled,
         use_container_width=True,
         key="tabel_editor_cloud"
     )
@@ -176,7 +182,7 @@ if not df_belum_filtered.empty:
                 df_kerja.loc[df_kerja['No'] == id_kasus, 'Status'] = 'Sudah'
             
             # 🔥 UPDATE LANGSUNG KE GOOGLE SHEETS PUSAT SECARA PERMANEN
-            conn.update(worksheet="Sheet1", data=df_kerja)
+            conn.update(spreadsheet=URL_SPREADSHEET, worksheet="Sheet1", data=df_kerja)
             
             st.success("🎉 Berhasil! Perubahan telah dikunci di Google Sheets pusat secara permanen.")
             st.rerun()
