@@ -1,17 +1,12 @@
 import streamlit as st
 import pandas as pd
-from streamlit_gsheets import GSheetsConnection
+import os
 
-# ==============================================================================
-# 1. KONFIGURASI HALAMAN UTAMA & SIDEBAR
-# ==============================================================================
-st.set_page_config(
-    page_title="Monitoring Anomali - BPS Pesawaran",
-    page_icon="📊",
-    layout="wide"
-)
+# Konfigurasi Halaman
+st.set_page_config(page_title="Monitoring Kualitas Data SE - BPS Pesawaran", page_icon="📊", layout="wide")
 
-# Custom CSS untuk mempercantik komponen visual & tata letak
+
+# CSS Kustom
 st.markdown("""
     <style>
     .main-title { font-size: 32px; font-weight: 800; color: #1E3A8A; margin-bottom: 2px; }
@@ -24,163 +19,119 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# ==============================================================================
-# 2. STRUKTUR SIDEBAR
-# ==============================================================================
+# Sidebar
 with st.sidebar:
     st.image("https://upload.wikimedia.org/wikipedia/commons/2/28/Lambang_Badan_Pusat_Statistik_%28BPS%29_Indonesia.svg", width=70)
     st.markdown("### 📋 Menu Navigasi")
     st.write("---")
+    # --- TAMBAHAN MENU ---
+    
+    
     st.markdown("#### 💡 CARA PENGGUNAAN")
     st.markdown("""
     <div class="sidebar-guide-box">
         <div class="sidebar-guide-title">📢 Langkah Update Progress:</div>
         <ol class="sidebar-step">
-            <li><b>Filter Data:</b> Pilih Kecamatan/Desa Anda.</li>
-            <li><b>Tandai Selesai:</b> Beri centang (✔️) pada kolom <b>Cek & Tandai</b>.</li>
-            <li><b>Simpan Progress:</b> Klik tombol merah <b>"💾 Simpan Perubahan"</b>.</li>
+            <li><b>Filter Data:</b> Pilih Kecamatan, Desa, atau ketik nama Anda.</li>
+            <li><b>Periksa Isian:</b> Lihat daftar kesalahan pada tabel Merah.</li>
+            <li><b>Eksekusi Fasih:</b> Perbaiki data di Fasih.</li>
+            <li><b>Tandai Selesai:</b> Centang kolom "Cek & Tandai".</li>
+            <li><b>Simpan:</b> Klik "💾 Simpan Perubahan".</li>
         </ol>
     </div>
     """, unsafe_allow_html=True)
     st.write("---")
-    st.caption("⚙️ **BPS Kabupaten Pesawaran**\nMonitoring Evaluasi Cloud v5.0")
+    st.caption("⚙️ **BPS Kabupaten Pesawaran**\nMonitoring Evaluasi v2.0")
 
-st.markdown('<div class="main-title">📊 Web Monitoring & Update Anomali</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">Badan Pusat Statistik Kabupaten Pesawaran</div>', unsafe_allow_html=True)
+# Manajemen Data
+FILE_NAME = "data_anomali.xlsx"
+BASELINE_COUNT = 1680
 
-# ==============================================================================
-# 3. KONEKSI GOOGLE SHEETS LIVE (DUA ARAH)
-# ==============================================================================
-conn = st.connection("gsheets", type=GSheetsConnection)
-
-def load_data_from_sheets():
-    try:
-        # Membaca data menggunakan konfigurasi dari Secrets secara aman
-        df = conn.read(worksheet="Sheet1", ttl=0)
+if os.path.exists(FILE_NAME):
+    if 'df_anomali' not in st.session_state:
+        # Membaca Sheet1 untuk Anomali
+        df = pd.read_excel(FILE_NAME, sheet_name="Sheet1") # Sesuaikan nama sheet-nya
         df.columns = df.columns.str.strip()
+        if 'Status' not in df.columns: df['Status'] = 'Belum'
+        st.session_state.df_anomali = df
         
-        kolom_teks = ['No', 'Kecamatan', 'Desa', 'SLS']
-        for col in kolom_teks:
-            if col in df.columns:
-                df[col] = df[col].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+        # Membaca Sheet2 untuk Missing Value
+        df_mv = pd.read_excel(FILE_NAME, sheet_name="Sheet2") # Sesuaikan nama sheet-nya
+        df_mv.columns = df_mv.columns.str.strip()
+        st.session_state.df_missing = df_mv
+
+    df_kerja = st.session_state.df_anomali
+    df_kerja_missing = st.session_state.df_missing
+    
+    # --------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
+    # 3. KONTEN HALAMAN UTAMA & NAVIGATION TABS
+    # --------------------------------------------------------------------------
+    st.markdown('<div class="main-title">Web Monitoring & Update Kualitas Data SE</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">Badan Pusat Statistik Kabupaten Pesawaran</div>', unsafe_allow_html=True)
+
+    # Membuat sistem TAB sederhana
+    tab1, tab2 = st.tabs(["📊 Anomali", "🔍 Missing Value"])
+
+    with tab1:
+        # --- DASHBOARD METRIK (Anomali) ---
+        df_awal = df_kerja[df_kerja['Tgl_Tarik'] == 26]
+        df_tambahan = df_kerja[df_kerja['Tgl_Tarik'] != 26]
+        jumlah_tambahan = len(df_tambahan)
         
-        if 'Status' not in df.columns:
-            df['Status'] = 'Belum'
-            
-        return df
-    except Exception as e:
-        st.error(f"⚠️ Gagal memuat data dari Google Sheets! Detail error: {e}")
-        return None
+        selesai_awal = len(df_awal[df_awal['Status'] == 'Sudah']) if not df_awal.empty else 0
+        persen_awal = (selesai_awal / len(df_awal) * 100) if len(df_awal) > 0 else 0
+        selesai_tambahan = len(df_tambahan[df_tambahan['Status'] == 'Sudah']) if not df_tambahan.empty else 0
+        persen_tambahan = (selesai_tambahan / len(df_tambahan) * 100) if len(df_tambahan) > 0 else 0
 
-df_kerja = load_data_from_sheets()
-if df_kerja is None:
-    st.stop()
+        st.subheader(f"📌 Beban Awal 26 Juni (1680) | ➕ Tambahan ({jumlah_tambahan})")
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("✅ Selesai (26 Juni)", f"{selesai_awal}", f"{persen_awal:.1f}%")
+        m2.metric("❌ Sisa (26 Juni)", f"{len(df_awal) - selesai_awal}")
+        m3.metric("✅ Selesai (Tmb)", f"{selesai_tambahan}", f"{persen_tambahan:.1f}%")
+        m4.metric("❌ Sisa (Tmb)", f"{len(df_tambahan) - selesai_tambahan}")
+        st.write("---")
 
-# ==============================================================================
-# 4. DASHBOARD METRIK & FILTER
-# ==============================================================================
-total_kasus = len(df_kerja)
-sudah_diperbaiki = len(df_kerja[df_kerja['Status'] == 'Sudah'].copy())
-belum_diperbaiki = total_kasus - sudah_diperbaiki
-persen_progress = (sudah_diperbaiki / total_kasus * 100) if total_kasus > 0 else 0
+        # Filter & Tabel Anomali (Kode filter tetap sama)
+        col_f1, col_f2, col_f3 = st.columns(3)
+        pilihan_kec = col_f1.selectbox("📍 Pilih Kecamatan:", ["Semua Kecamatan"] + sorted(df_kerja['Kecamatan'].unique().tolist()))
+        pilihan_desa = col_f2.selectbox("🏢 Pilih Desa/Kelurahan:", ["Semua Desa"] + sorted(df_kerja[df_kerja['Kecamatan'] == pilihan_kec]['Desa'].unique().tolist() if pilihan_kec != "Semua Kecamatan" else df_kerja['Desa'].unique().tolist()))
+        search_keyword = col_f3.text_input("👤 Cari Nama Petugas / SLS / Kategori:", "")
 
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("📌 Total Kasus Anomali", f"{total_kasus} Kasus")
-m2.metric("✅ Berhasil Diperbaiki", f"{sudah_diperbaiki} Kasus")
-m3.metric("❌ Sisa Belum Diperbaiki", f"{belum_diperbaiki} Kasus")
-m4.metric("📈 Progress Penyelesaian", f"{persen_progress:.1f}%")
+        def jalankan_filter(df):
+            if pilihan_kec != "Semua Kecamatan": df = df[df['Kecamatan'] == pilihan_kec]
+            if pilihan_desa != "Semua Desa": df = df[df['Desa'] == pilihan_desa]
+            if search_keyword: df = df[df.astype(str).apply(lambda x: x.str.contains(search_keyword, case=False)).any(axis=1)]
+            return df
 
-st.write("---")
-st.markdown("### 🔍 Filter Wilayah & Nama Petugas")
-col_f1, col_f2, col_f3 = st.columns(3)
+        st.markdown('<div class="section-header-belum">🟥 DAFTAR ANOMALI YANG BELUM DIPERBAIKI</div>', unsafe_allow_html=True)
+        df_belum = jalankan_filter(df_kerja[df_kerja['Status'] != 'Sudah']).copy()
+        df_belum.insert(0, 'Cek & Tandai', False)
+        edited_df = st.data_editor(
+            df_belum, 
+            column_config={"Cek & Tandai": st.column_config.CheckboxColumn(), "ID_Assignment": None, "Status": None, "No": None}, 
+            disabled=['Kecamatan', 'Desa', 'SLS'], use_container_width=True
+        )
+        if st.button("💾 Simpan Perubahan & Pindahkan ke Tabel Bawah", type="primary"):
+            for idx, row in edited_df[edited_df['Cek & Tandai'] == True].iterrows():
+                st.session_state.df_anomali.loc[st.session_state.df_anomali['No'] == row['No'], 'Status'] = 'Sudah'
+            st.session_state.df_anomali.to_excel(FILE_NAME, index=False)
+            st.rerun()
 
-with col_f1:
-    list_kec = ["Semua Kecamatan"] + sorted(df_kerja['Kecamatan'].dropna().unique().tolist())
-    pilihan_kec = st.selectbox("📍 Pilih Kecamatan:", list_kec)
-    
-with col_f2:
-    if pilihan_kec != "Semua Kecamatan":
-        df_filtered_kec = df_kerja[df_kerja['Kecamatan'] == pilihan_kec]
-        list_desa = ["Semua Desa"] + sorted(df_filtered_kec['Desa'].dropna().unique().tolist())
-    else:
-        list_desa = ["Semua Desa"] + sorted(df_kerja['Desa'].dropna().unique().tolist())
-    pilihan_desa = st.selectbox("🏢 Pilih Desa/Kelurahan:", list_desa)
+        st.markdown('<div class="section-header-sudah">🟩 REKAPAN ANOMALI YANG SUDAH DIPERBAIKI</div>', unsafe_allow_html=True)
+        df_sudah = df_kerja[df_kerja['Status'] == 'Sudah'].copy()
+        df_sudah_filtered = jalankan_filter(df_sudah)
+        if not df_sudah_filtered.empty:
+            df_tampil = df_sudah_filtered.drop(columns=['ID_Assignment', 'Status'], errors='ignore').reset_index(drop=True)
+            df_tampil.index = df_tampil.index + 1
+            st.dataframe(df_tampil, use_container_width=True)
 
-with col_f3:
-    search_keyword = st.text_input("👤 Cari Nama Petugas / SLS / Kategori:", "")
-
-def jalankan_filter(df_target):
-    if pilihan_kec != "Semua Kecamatan":
-        df_target = df_target[df_target['Kecamatan'] == pilihan_kec]
-    if pilihan_desa != "Semua Desa":
-        df_target = df_target[df_target['Desa'] == pilihan_desa]
-    if search_keyword:
-        df_target = df_target[df_target.astype(str).apply(lambda x: x.str.contains(search_keyword, case=False)).any(axis=1)]
-    return df_target
-
-# ==============================================================================
-# 5. TABEL INTERAKTIF & PROSES SIMPAN TULIS BALIK
-# ==============================================================================
-st.write("---")
-st.markdown('<div class="section-header-belum">🟥 DAFTAR ANOMALI YANG BELUM DIPERBAIKI</div>', unsafe_allow_html=True)
-
-df_belum = df_kerja[df_kerja['Status'] != 'Sudah'].copy()
-df_belum_filtered = jalankan_filter(df_belum)
-
-if not df_belum_filtered.empty:
-    df_belum_filtered.insert(0, 'Cek & Tandai', False)
-    
-    kolom_ada = df_belum_filtered.columns.tolist()
-    kolom_disabled = [c for c in ['No', 'Kecamatan', 'Desa', 'SLS', 'Keluarga atau Usaha', 'Anomali', 'Petugas', 'Pengawas'] if c in kolom_ada]
-    
-    edited_df = st.data_editor(
-        df_belum_filtered,
-        column_config={
-            "Cek & Tandai": st.column_config.CheckboxColumn(
-                "Cek & Tandai",
-                help="Centang jika baris data ini sudah selesai diperbaiki",
-                default=False,
-            ),
-            "Status": None
-        },
-        disabled=kolom_disabled,
-        use_container_width=True,
-        key="tabel_editor_cloud"
-    )
-    
-    if st.button("💾 Simpan Perubahan & Amankan ke Google Sheets", type="primary", use_container_width=True):
-        baris_dicentang = edited_df[edited_df['Cek & Tandai'] == True]
+    with tab2:
+        # PENTING: Semua kode di bawah ini HARUS menjorok ke dalam (diberi spasi/tab)
+        st.markdown('<div class="main-title">🔍 Monitoring Missing Value</div>', unsafe_allow_html=True)
         
-        if not baris_dicentang.empty:
-            # Update status lokal ke 'Sudah'
-            for idx, row in baris_dicentang.iterrows():
-                id_kasus = row['No']
-                df_kerja.loc[df_kerja['No'] == id_kasus, 'Status'] = 'Sudah'
-            
-            try:
-                # Menuliskan kembali seluruh perubahan ke file Google Sheets pusat
-                conn.update(worksheet="Sheet1", data=df_kerja)
-                st.success("🎉 Berhasil! Progres pengerjaan Anda telah ditulis balik ke Google Sheets pusat.")
-                st.rerun()
-            except Exception as ex:
-                st.error(f"❌ Gagal menulis balik data ke Google Sheets! Detail error: {ex}")
+        # Contoh kode agar tidak error
+        if 'df_missing' in locals():
+            st.dataframe(df_missing)
         else:
-            st.info("💡 Pemberitahuan: Belum ada data yang Anda centang.")
-else:
-    st.success("✨ Sempurna! Semua data anomali pada filter wilayah ini sudah diselesaikan.")
-
-# ==============================================================================
-# 6. REKAPAN DATA SELESAI
-# ==============================================================================
-st.write("---")
-st.markdown('<div class="section-header-sudah">🟩 REKAPAN ANOMALI YANG SUDAH DIPERBAIKI</div>', unsafe_allow_html=True)
-
-df_sudah = df_kerja[df_kerja['Status'] == 'Sudah'].copy()
-df_sudah_filtered = jalankan_filter(df_sudah)
-
-if not df_sudah_filtered.empty:
-    df_sudah_filtered = df_sudah_filtered.reset_index(drop=True)
-    df_sudah_filtered.index = df_sudah_filtered.index + 1
-    st.dataframe(df_sudah_filtered.drop(columns=['Status'], errors='ignore'), use_container_width=True)
-else:
-    st.info("💡 Catatan: Belum ada daftar kasus yang selesai diperbaiki pada kombinasi filter ini.")
+            st.info("Data tidak ditemukan.")
