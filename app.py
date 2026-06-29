@@ -23,9 +23,7 @@ with st.sidebar:
     st.image("https://upload.wikimedia.org/wikipedia/commons/2/28/Lambang_Badan_Pusat_Statistik_%28BPS%29_Indonesia.svg", width=70)
     st.markdown("### 📋 Menu Navigasi")
     st.write("---")
-    # --- TAMBAHAN MENU ---
-    menu = st.radio("Pilih Menu:", ["Anomali", "Missing Value"])
-    st.write("---")
+   
     
     st.markdown("#### 💡 CARA PENGGUNAAN")
     st.markdown("""
