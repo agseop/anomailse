@@ -3,8 +3,7 @@ import pandas as pd
 import os
 
 # Konfigurasi Halaman
-st.set_page_config(page_title="Monitoring Kualitas Data SE - BPS Pesawaran", page_icon="📊", layout="wide")
-
+st.set_page_config(page_title="Monitoring Anomali - BPS Pesawaran", page_icon="📊", layout="wide")
 
 # CSS Kustom
 st.markdown("""
@@ -25,7 +24,8 @@ with st.sidebar:
     st.markdown("### 📋 Menu Navigasi")
     st.write("---")
     # --- TAMBAHAN MENU ---
-    
+    menu = st.radio("Pilih Menu:", ["Anomali", "Missing Value"])
+    st.write("---")
     
     st.markdown("#### 💡 CARA PENGGUNAAN")
     st.markdown("""
@@ -41,7 +41,7 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
     st.write("---")
-    st.caption("⚙️ **BPS Kabupaten Pesawaran**\nMonitoring Evaluasi v2.0")
+    st.caption("⚙️ **BPS Kabupaten Pesawaran**\nMonitoring Evaluasi Lokal v2.0")
 
 # Manajemen Data
 FILE_NAME = "data_anomali.xlsx"
@@ -49,89 +49,103 @@ BASELINE_COUNT = 1680
 
 if os.path.exists(FILE_NAME):
     if 'df_anomali' not in st.session_state:
-        # Membaca Sheet1 untuk Anomali
-        df = pd.read_excel(FILE_NAME, sheet_name="Sheet1") # Sesuaikan nama sheet-nya
+        df = pd.read_excel(FILE_NAME)
         df.columns = df.columns.str.strip()
         if 'Status' not in df.columns: df['Status'] = 'Belum'
         st.session_state.df_anomali = df
-        
-        # Membaca Sheet2 untuk Missing Value
-        df_mv = pd.read_excel(FILE_NAME, sheet_name="Sheet2") # Sesuaikan nama sheet-nya
-        df_mv.columns = df_mv.columns.str.strip()
-        st.session_state.df_missing = df_mv
 
     df_kerja = st.session_state.df_anomali
-    df_kerja_missing = st.session_state.df_missing
     
     # --------------------------------------------------------------------------
+    # 3. KONTEN HALAMAN UTAMA (Header Utama)
     # --------------------------------------------------------------------------
-    # 3. KONTEN HALAMAN UTAMA & NAVIGATION TABS
-    # --------------------------------------------------------------------------
-    st.markdown('<div class="main-title">Web Monitoring & Update Kualitas Data SE</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">📊 Web Monitoring & Update Anomali</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">Badan Pusat Statistik Kabupaten Pesawaran</div>', unsafe_allow_html=True)
 
-    # Membuat sistem TAB sederhana
-    tab1, tab2 = st.tabs(["📊 Anomali", "🔍 Missing Value"])
+    st.write("---")
+    
+    # --------------------------------------------------------------------------
+    # 5. DASHBOARD METRIK (Dengan Persentase)
+    # --------------------------------------------------------------------------
+    df_awal = df_kerja[df_kerja['Tgl_Tarik'] == 26]
+    
+    # Tambahan adalah yang Tgl_Tarik bukan 26
+    df_tambahan = df_kerja[df_kerja['Tgl_Tarik'] != 26]
+    
+    # Hitung jumlah tambahan untuk heading
+    jumlah_tambahan = len(df_tambahan)
+    
+    # Hitung Selesai
+    selesai_awal = len(df_awal[df_awal['Status'] == 'Sudah']) if not df_awal.empty else 0
+    persen_awal = (selesai_awal / len(df_awal) * 100) if len(df_awal) > 0 else 0
+    
+    selesai_tambahan = len(df_tambahan[df_tambahan['Status'] == 'Sudah']) if not df_tambahan.empty else 0
+    persen_tambahan = (selesai_tambahan / len(df_tambahan) * 100) if len(df_tambahan) > 0 else 0
 
-    with tab1:
-        # --- DASHBOARD METRIK (Anomali) ---
-        df_awal = df_kerja[df_kerja['Tgl_Tarik'] == 26]
-        df_tambahan = df_kerja[df_kerja['Tgl_Tarik'] != 26]
-        jumlah_tambahan = len(df_tambahan)
+    # Tampilan UI 4 kolom
+    st.subheader(f"📌 Beban Awal 26 Juni (1680) | ➕ Tambahan ({jumlah_tambahan})")
+    m1, m2, m3, m4 = st.columns(4)
+    
+    m1.metric("✅ Selesai (26 Juni)", f"{selesai_awal}", f"{persen_awal:.1f}%")
+    m2.metric("❌ Sisa (26 Juni)", f"{len(df_awal) - selesai_awal}")
+    m3.metric("✅ Selesai (Tmb)", f"{selesai_tambahan}", f"{persen_tambahan:.1f}%")
+    m4.metric("❌ Sisa (Tmb)", f"{len(df_tambahan) - selesai_tambahan}")
+  
+    st.write("---")
+
+    # Filter
+    st.markdown("### 🔍 Filter Wilayah & Nama Petugas")
+    col_f1, col_f2, col_f3 = st.columns(3)
+    pilihan_kec = col_f1.selectbox("📍 Pilih Kecamatan:", ["Semua Kecamatan"] + sorted(df_kerja['Kecamatan'].unique().tolist()))
+    pilihan_desa = col_f2.selectbox("🏢 Pilih Desa/Kelurahan:", ["Semua Desa"] + sorted(df_kerja[df_kerja['Kecamatan'] == pilihan_kec]['Desa'].unique().tolist() if pilihan_kec != "Semua Kecamatan" else df_kerja['Desa'].unique().tolist()))
+    search_keyword = col_f3.text_input("👤 Cari Nama Petugas / SLS / Kategori:", "")
+
+    def jalankan_filter(df):
+        if pilihan_kec != "Semua Kecamatan": df = df[df['Kecamatan'] == pilihan_kec]
+        if pilihan_desa != "Semua Desa": df = df[df['Desa'] == pilihan_desa]
+        if search_keyword: df = df[df.astype(str).apply(lambda x: x.str.contains(search_keyword, case=False)).any(axis=1)]
+        return df
+
+    # Tabel Belum Selesai
+    st.markdown('<div class="section-header-belum">🟥 DAFTAR ANOMALI YANG BELUM DIPERBAIKI</div>', unsafe_allow_html=True)
+    df_belum = jalankan_filter(df_kerja[df_kerja['Status'] != 'Sudah']).copy()
+    df_belum.insert(0, 'Cek & Tandai', False)
+    # Gunakan column_config untuk menyembunyikan kolom yang tidak diinginkan
+    edited_df = st.data_editor(
+        df_belum, 
+        column_config={
+            "Cek & Tandai": st.column_config.CheckboxColumn(),
+            "ID_Assignment": None,  # Sembunyikan ID_Assignment
+            "Status": None,         # Sembunyikan Status
+            "No": None              # Jika kolom No juga ingin disembunyikan
+        }, 
+        disabled=['Kecamatan', 'Desa', 'SLS'], # Tambahkan kolom lain di sini yang tidak boleh diedit
+        use_container_width=True
+    )
+  
+    if st.button("💾 Simpan Perubahan & Pindahkan ke Tabel Bawah", type="primary"):
+        for idx, row in edited_df[edited_df['Cek & Tandai'] == True].iterrows():
+            st.session_state.df_anomali.loc[st.session_state.df_anomali['No'] == row['No'], 'Status'] = 'Sudah'
+        st.session_state.df_anomali.to_excel(FILE_NAME, index=False)
+        st.rerun()
+
+    # --------------------------------------------------------------------------
+    # 8. TABEL 2 - REKAPAN DATA SELESAI (SUDAH DIPERBAIKI)
+    # --------------------------------------------------------------------------
+    st.markdown('<div class="section-header-sudah">🟩 REKAPAN ANOMALI YANG SUDAH DIPERBAIKI</div>', unsafe_allow_html=True)
+    
+    df_sudah = df_kerja[df_kerja['Status'] == 'Sudah'].copy()
+    df_sudah_filtered = jalankan_filter(df_sudah)
+    
+    if not df_sudah_filtered.empty:
+        # Menghapus kolom yang tidak ingin ditampilkan menggunakan .drop()
+        kolom_dihapus = ['ID_Assignment', 'Status'] 
+        df_tampil = df_sudah_filtered.drop(columns=kolom_dihapus, errors='ignore')
         
-        selesai_awal = len(df_awal[df_awal['Status'] == 'Sudah']) if not df_awal.empty else 0
-        persen_awal = (selesai_awal / len(df_awal) * 100) if len(df_awal) > 0 else 0
-        selesai_tambahan = len(df_tambahan[df_tambahan['Status'] == 'Sudah']) if not df_tambahan.empty else 0
-        persen_tambahan = (selesai_tambahan / len(df_tambahan) * 100) if len(df_tambahan) > 0 else 0
-
-        st.subheader(f"📌 Beban Awal 26 Juni (1680) | ➕ Tambahan ({jumlah_tambahan})")
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("✅ Selesai (26 Juni)", f"{selesai_awal}", f"{persen_awal:.1f}%")
-        m2.metric("❌ Sisa (26 Juni)", f"{len(df_awal) - selesai_awal}")
-        m3.metric("✅ Selesai (Tmb)", f"{selesai_tambahan}", f"{persen_tambahan:.1f}%")
-        m4.metric("❌ Sisa (Tmb)", f"{len(df_tambahan) - selesai_tambahan}")
-        st.write("---")
-
-        # Filter & Tabel Anomali (Kode filter tetap sama)
-        col_f1, col_f2, col_f3 = st.columns(3)
-        pilihan_kec = col_f1.selectbox("📍 Pilih Kecamatan:", ["Semua Kecamatan"] + sorted(df_kerja['Kecamatan'].unique().tolist()))
-        pilihan_desa = col_f2.selectbox("🏢 Pilih Desa/Kelurahan:", ["Semua Desa"] + sorted(df_kerja[df_kerja['Kecamatan'] == pilihan_kec]['Desa'].unique().tolist() if pilihan_kec != "Semua Kecamatan" else df_kerja['Desa'].unique().tolist()))
-        search_keyword = col_f3.text_input("👤 Cari Nama Petugas / SLS / Kategori:", "")
-
-        def jalankan_filter(df):
-            if pilihan_kec != "Semua Kecamatan": df = df[df['Kecamatan'] == pilihan_kec]
-            if pilihan_desa != "Semua Desa": df = df[df['Desa'] == pilihan_desa]
-            if search_keyword: df = df[df.astype(str).apply(lambda x: x.str.contains(search_keyword, case=False)).any(axis=1)]
-            return df
-
-        st.markdown('<div class="section-header-belum">🟥 DAFTAR ANOMALI YANG BELUM DIPERBAIKI</div>', unsafe_allow_html=True)
-        df_belum = jalankan_filter(df_kerja[df_kerja['Status'] != 'Sudah']).copy()
-        df_belum.insert(0, 'Cek & Tandai', False)
-        edited_df = st.data_editor(
-            df_belum, 
-            column_config={"Cek & Tandai": st.column_config.CheckboxColumn(), "ID_Assignment": None, "Status": None, "No": None}, 
-            disabled=['Kecamatan', 'Desa', 'SLS'], use_container_width=True
-        )
-        if st.button("💾 Simpan Perubahan & Pindahkan ke Tabel Bawah", type="primary"):
-            for idx, row in edited_df[edited_df['Cek & Tandai'] == True].iterrows():
-                st.session_state.df_anomali.loc[st.session_state.df_anomali['No'] == row['No'], 'Status'] = 'Sudah'
-            st.session_state.df_anomali.to_excel(FILE_NAME, index=False)
-            st.rerun()
-
-        st.markdown('<div class="section-header-sudah">🟩 REKAPAN ANOMALI YANG SUDAH DIPERBAIKI</div>', unsafe_allow_html=True)
-        df_sudah = df_kerja[df_kerja['Status'] == 'Sudah'].copy()
-        df_sudah_filtered = jalankan_filter(df_sudah)
-        if not df_sudah_filtered.empty:
-            df_tampil = df_sudah_filtered.drop(columns=['ID_Assignment', 'Status'], errors='ignore').reset_index(drop=True)
-            df_tampil.index = df_tampil.index + 1
-            st.dataframe(df_tampil, use_container_width=True)
-
-    with tab2:
-        # PENTING: Semua kode di bawah ini HARUS menjorok ke dalam (diberi spasi/tab)
-        st.markdown('<div class="main-title">🔍 Monitoring Missing Value</div>', unsafe_allow_html=True)
+        # Reset penomoran tampilan
+        df_tampil = df_tampil.reset_index(drop=True)
+        df_tampil.index = df_tampil.index + 1
         
-        # Contoh kode agar tidak error
-        if 'df_missing' in locals():
-            st.dataframe(df_missing)
-        else:
-            st.info("Data tidak ditemukan.")
+        st.dataframe(df_tampil, use_container_width=True)
+    else:
+        st.info("💡 Catatan: Belum ada daftar kasus yang selesai diperbaiki pada kombinasi filter ini.")
